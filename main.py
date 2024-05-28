@@ -52,7 +52,13 @@ def fetch_members(org_id):
             database='rso'
         )
         cursor = conn.cursor()
-        cursor.execute("SELECT mem_id, name, position FROM members WHERE mem_org = %s", (org_id,))
+        cursor.execute("""
+            SELECT members.mem_id, members.name, positions.position_name
+            FROM members
+            JOIN positions ON members.position = positions.pos_id
+            WHERE members.mem_org = %s
+            ORDER BY positions.position_name
+        """, (org_id,))
         rows = cursor.fetchall()
 
         for row in member_tree.get_children():
@@ -155,6 +161,12 @@ def add_organization():
             img_label.config(image=img_preview)
             img_label.image = img_preview
 
+            # Adjust the window size based on the image size
+            img_width, img_height = image.size
+            new_width = max(600, img_width + 300)
+            new_height = max(400, img_height + 300)
+            popup.geometry(f'{new_width}x{new_height}')
+
     def save_organization():
         org_name = org_name_entry.get()
         vision = vision_entry.get()
@@ -194,33 +206,33 @@ def add_organization():
     popup = Toplevel(root)
     popup.title("Add Organization")
     popup.configure(bg="#e0f7fa")
-    center_window(popup)
+    center_window(popup, 600, 600)  # Initial size for the form window
 
-    Label(popup, text="Organization Name:", bg="#e0f7fa").pack(pady=5)
-    org_name_entry = Entry(popup)
-    org_name_entry.pack(pady=5)
+    Label(popup, text="Organization Name:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=5)
+    org_name_entry = Entry(popup, font=("Arial", 12))
+    org_name_entry.pack(pady=5, padx=20, fill=X)
 
-    Label(popup, text="Vision:", bg="#e0f7fa").pack(pady=5)
-    vision_entry = Entry(popup)
-    vision_entry.pack(pady=5)
+    Label(popup, text="Vision:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=5)
+    vision_entry = Entry(popup, font=("Arial", 12))
+    vision_entry.pack(pady=5, padx=20, fill=X)
 
-    Label(popup, text="Mission:", bg="#e0f7fa").pack(pady=5)
-    mission_entry = Entry(popup)
-    mission_entry.pack(pady=5)
+    Label(popup, text="Mission:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=5)
+    mission_entry = Entry(popup, font=("Arial", 12))
+    mission_entry.pack(pady=5, padx=20, fill=X)
 
-    Label(popup, text="Abbreviation:", bg="#e0f7fa").pack(pady=5)
-    abbreviation_entry = Entry(popup)
-    abbreviation_entry.pack(pady=5)
+    Label(popup, text="Abbreviation:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=5)
+    abbreviation_entry = Entry(popup, font=("Arial", 12))
+    abbreviation_entry.pack(pady=5, padx=20, fill=X)
 
-    Label(popup, text="Organization Image:", bg="#e0f7fa").pack(pady=10)
-    img_label = Label(popup)
+    Label(popup, text="Organization Image:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=10)
+    img_label = Label(popup, bg="#e0f7fa")
     img_label.pack(pady=10)
 
-    browse_button = Button(popup, text="Browse Image", command=browse_image, bg="#00796b", fg="white")
+    browse_button = Button(popup, text="Browse Image", command=browse_image, bg="#00796b", fg="white", font=("Arial", 12, "bold"))
     browse_button.pack(pady=5)
 
-    save_button = Button(popup, text="Save", command=save_organization, bg="#00796b", fg="white")
-    save_button.pack(pady=5)
+    save_button = Button(popup, text="Save", command=save_organization, bg="#00796b", fg="white", font=("Arial", 12, "bold"))
+    save_button.pack(pady=10)
 
 # Function to add a new member to the database
 def add_member():
@@ -228,8 +240,8 @@ def add_member():
         org_info = org_dropdown.get()
         org_id = org_info.split(" - ")[0]
         member_name = member_name_entry.get()
-        position = position_entry.get()
-        if member_name and position and org_id:
+        pos_id = position_dropdown.get().split(" - ")[0]  # Get the pos_id from the dropdown
+        if member_name and pos_id and org_id:
             try:
                 conn = mysql.connector.connect(
                     host='localhost',
@@ -238,7 +250,7 @@ def add_member():
                     database='rso'
                 )
                 cursor = conn.cursor()
-                cursor.execute("INSERT INTO members (name, position, mem_org) VALUES (%s, %s, %s)", (member_name, position, org_id))
+                cursor.execute("INSERT INTO members (name, position, mem_org) VALUES (%s, %s, %s)", (member_name, pos_id, org_id))
                 conn.commit()
 
                 cursor.close()
@@ -246,7 +258,7 @@ def add_member():
 
                 messagebox.showinfo("Success", "Member added successfully")
                 popup.destroy()
-                # fetch_data()  # Optionally, refresh the table or other UI elements
+                fetch_members(org_id)  # Refresh the members table with new data
             except mysql.connector.Error as err:
                 messagebox.showerror("Error", f"Error adding member: {err}")
         else:
@@ -272,27 +284,48 @@ def add_member():
         except mysql.connector.Error as err:
             messagebox.showerror("Error", f"Error loading organizations: {err}")
 
+    def load_positions():
+        try:
+            conn = mysql.connector.connect(
+                host='localhost',
+                user='root',
+                password='',
+                database='rso'
+            )
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM positions")
+            rows = cursor.fetchall()
+
+            for row in rows:
+                position_dropdown['values'] = (*position_dropdown['values'], f"{row[0]} - {row[1]}")
+
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as err:
+            messagebox.showerror("Error", f"Error loading positions: {err}")
+
     popup = Toplevel(root)
     popup.title("Add Member")
     popup.configure(bg="#e0f7fa")
-    center_window(popup, 400, 300)  # Adjusted size for the "Add Member" form
+    center_window(popup, 400, 400)  # Adjusted size for the "Add Member" form
 
-    Label(popup, text="Organization:", bg="#e0f7fa").pack(pady=10)
-    org_dropdown = ttk.Combobox(popup)
-    org_dropdown.pack(pady=10)
+    Label(popup, text="Organization:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=10)
+    org_dropdown = ttk.Combobox(popup, font=("Arial", 12))
+    org_dropdown.pack(pady=10, padx=20, fill=X)
 
-    Label(popup, text="Member Name:", bg="#e0f7fa").pack(pady=10)
-    member_name_entry = Entry(popup)
-    member_name_entry.pack(pady=10)
+    Label(popup, text="Member Name:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=10)
+    member_name_entry = Entry(popup, font=("Arial", 12))
+    member_name_entry.pack(pady=10, padx=20, fill=X)
 
-    Label(popup, text="Position:", bg="#e0f7fa").pack(pady=10)
-    position_entry = Entry(popup)
-    position_entry.pack(pady=10)
+    Label(popup, text="Position:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=10)
+    position_dropdown = ttk.Combobox(popup, font=("Arial", 12))
+    position_dropdown.pack(pady=10, padx=20, fill=X)
 
-    save_button = Button(popup, text="Save", command=save_member, bg="#00796b", fg="white")
+    save_button = Button(popup, text="Save", command=save_member, bg="#00796b", fg="white", font=("Arial", 12, "bold"))
     save_button.pack(pady=10)
 
     load_organizations()
+    load_positions()
 
 # Function to edit an existing organization
 def edit_organization():
@@ -317,6 +350,12 @@ def edit_organization():
             img_preview = ImageTk.PhotoImage(image)
             img_label.config(image=img_preview)
             img_label.image = img_preview
+
+            # Adjust the window size based on the image size
+            img_width, img_height = image.size
+            new_width = max(600, img_width + 300)
+            new_height = max(400, img_height + 300)
+            popup.geometry(f'{new_width}x{new_height}')
 
     def update_organization():
         new_name = org_name_entry.get()
@@ -355,34 +394,34 @@ def edit_organization():
                 popup.destroy()
                 fetch_data()  # Refresh the table with new data
             except mysql.connector.Error as err:
-                messagebox.showerror("Error", f"Error updating organization: {err}")
+                messagebox.showerror("Error updating organization: {err}")
         else:
             messagebox.showwarning("Input Error", "Please enter a new organization name")
 
     popup = Toplevel(root)
     popup.title("Edit Organization")
     popup.configure(bg="#e0f7fa")
-    center_window(popup, 400, 400)  # Adjusted size for the "Edit Organization" form
+    center_window(popup, 600, 600)  # Adjusted size for the "Edit Organization" form
 
-    Label(popup, text="Organization Name:", bg="#e0f7fa").pack(pady=10)
-    org_name_entry = Entry(popup)
+    Label(popup, text="Organization Name:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=10)
+    org_name_entry = Entry(popup, font=("Arial", 12))
     org_name_entry.insert(0, org_name)
-    org_name_entry.pack(pady=10)
+    org_name_entry.pack(pady=10, padx=20, fill=X)
 
-    Label(popup, text="Vision:", bg="#e0f7fa").pack(pady=10)
-    vision_entry = Entry(popup)
-    vision_entry.pack(pady=10)
+    Label(popup, text="Vision:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=10)
+    vision_entry = Entry(popup, font=("Arial", 12))
+    vision_entry.pack(pady=10, padx=20, fill=X)
 
-    Label(popup, text="Mission:", bg="#e0f7fa").pack(pady=10)
-    mission_entry = Entry(popup)
-    mission_entry.pack(pady=10)
+    Label(popup, text="Mission:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=10)
+    mission_entry = Entry(popup, font=("Arial", 12))
+    mission_entry.pack(pady=10, padx=20, fill=X)
 
-    Label(popup, text="Abbreviation:", bg="#e0f7fa").pack(pady=10)
-    abbreviation_entry = Entry(popup)
-    abbreviation_entry.pack(pady=10)
+    Label(popup, text="Abbreviation:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=10)
+    abbreviation_entry = Entry(popup, font=("Arial", 12))
+    abbreviation_entry.pack(pady=10, padx=20, fill=X)
 
-    Label(popup, text="Organization Image:", bg="#e0f7fa").pack(pady=10)
-    img_label = Label(popup)
+    Label(popup, text="Organization Image:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=10)
+    img_label = Label(popup, bg="#e0f7fa")
     img_label.pack(pady=10)
 
     # Load and display the existing image if available
@@ -409,10 +448,10 @@ def edit_organization():
     mission_entry.insert(0, mission)
     abbreviation_entry.insert(0, abbreviation)
 
-    browse_button = Button(popup, text="Browse Image", command=browse_image, bg="#00796b", fg="white")
+    browse_button = Button(popup, text="Browse Image", command=browse_image, bg="#00796b", fg="white", font=("Arial", 12, "bold"))
     browse_button.pack(pady=10)
 
-    save_button = Button(popup, text="Save", command=update_organization, bg="#00796b", fg="white")
+    save_button = Button(popup, text="Save", command=update_organization, bg="#00796b", fg="white", font=("Arial", 12, "bold"))
     save_button.pack(pady=10)
 
 # Function to edit an existing member
@@ -424,12 +463,12 @@ def edit_member():
 
     member_id = member_tree.item(selected_item)["values"][0]
     member_name = member_tree.item(selected_item)["values"][1]
-    position = member_tree.item(selected_item)["values"][2]
+    position_name = member_tree.item(selected_item)["values"][2]
 
     def update_member():
         new_name = member_name_entry.get()
-        new_position = position_entry.get()
-        if new_name and new_position:
+        new_pos_id = position_dropdown.get().split(" - ")[0]  # Get the pos_id from the dropdown
+        if new_name and new_pos_id:
             try:
                 conn = mysql.connector.connect(
                     host='localhost',
@@ -438,7 +477,7 @@ def edit_member():
                     database='rso'
                 )
                 cursor = conn.cursor()
-                cursor.execute("UPDATE members SET name = %s, position = %s WHERE mem_id = %s", (new_name, new_position, member_id))
+                cursor.execute("UPDATE members SET name = %s, position = %s WHERE mem_id = %s", (new_name, new_pos_id, member_id))
                 conn.commit()
 
                 cursor.close()
@@ -452,23 +491,44 @@ def edit_member():
         else:
             messagebox.showwarning("Input Error", "Please fill all fields")
 
+    def load_positions():
+        try:
+            conn = mysql.connector.connect(
+                host='localhost',
+                user='root',
+                password='',
+                database='rso'
+            )
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM positions")
+            rows = cursor.fetchall()
+
+            for row in rows:
+                position_dropdown['values'] = (*position_dropdown['values'], f"{row[0]} - {row[1]}")
+
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as err:
+            messagebox.showerror("Error", f"Error loading positions: {err}")
+
     popup = Toplevel(root)
     popup.title("Edit Member")
     popup.configure(bg="#e0f7fa")
     center_window(popup, 400, 300)
 
-    Label(popup, text="Member Name:", bg="#e0f7fa").pack(pady=10)
-    member_name_entry = Entry(popup)
+    Label(popup, text="Member Name:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=10)
+    member_name_entry = Entry(popup, font=("Arial", 12))
     member_name_entry.insert(0, member_name)
-    member_name_entry.pack(pady=10)
+    member_name_entry.pack(pady=10, padx=20, fill=X)
 
-    Label(popup, text="Position:", bg="#e0f7fa").pack(pady=10)
-    position_entry = Entry(popup)
-    position_entry.insert(0, position)
-    position_entry.pack(pady=10)
+    Label(popup, text="Position:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=10)
+    position_dropdown = ttk.Combobox(popup, font=("Arial", 12))
+    position_dropdown.pack(pady=10, padx=20, fill=X)
 
-    save_button = Button(popup, text="Save", command=update_member, bg="#00796b", fg="white")
+    save_button = Button(popup, text="Save", command=update_member, bg="#00796b", fg="white", font=("Arial", 12, "bold"))
     save_button.pack(pady=10)
+
+    load_positions()
 
 # Function to delete an existing organization
 def delete_organization():
@@ -511,12 +571,12 @@ def delete_organization():
     popup.configure(bg="#e0f7fa")
     center_window(popup)
 
-    Label(popup, text="Are you sure you want to delete this organization?", bg="#e0f7fa").pack(pady=10)
+    Label(popup, text="Are you sure you want to delete this organization?", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=10)
 
-    confirm_button = Button(popup, text="Yes", command=confirm_delete, bg="#d32f2f", fg="white")
+    confirm_button = Button(popup, text="Yes", command=confirm_delete, bg="#d32f2f", fg="white", font=("Arial", 12, "bold"))
     confirm_button.pack(pady=10)
 
-    cancel_button = Button(popup, text="No", command=popup.destroy, bg="#00796b", fg="white")
+    cancel_button = Button(popup, text="No", command=popup.destroy, bg="#00796b", fg="white", font=("Arial", 12, "bold"))
     cancel_button.pack(pady=10)
 
 # Function to delete an existing member
@@ -554,12 +614,12 @@ def delete_member():
     popup.configure(bg="#e0f7fa")
     center_window(popup)
 
-    Label(popup, text="Are you sure you want to delete this member?", bg="#e0f7fa").pack(pady=10)
+    Label(popup, text="Are you sure you want to delete this member?", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=10)
 
-    confirm_button = Button(popup, text="Yes", command=confirm_delete, bg="#d32f2f", fg="white")
+    confirm_button = Button(popup, text="Yes", command=confirm_delete, bg="#d32f2f", fg="white", font=("Arial", 12, "bold"))
     confirm_button.pack(pady=10)
 
-    cancel_button = Button(popup, text="No", command=popup.destroy, bg="#00796b", fg="white")
+    cancel_button = Button(popup, text="No", command=popup.destroy, bg="#00796b", fg="white", font=("Arial", 12, "bold"))
     cancel_button.pack(pady=10)
 
 # Function to create the login window
@@ -569,12 +629,12 @@ def login_window():
     login_popup.configure(bg="#e0f7fa")
     center_window(login_popup, 300, 200)
     
-    Label(login_popup, text="Username:", bg="#e0f7fa").pack(pady=5)
-    username_entry = Entry(login_popup)
+    Label(login_popup, text="Username:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=5)
+    username_entry = Entry(login_popup, font=("Arial", 12))
     username_entry.pack(pady=5)
     
-    Label(login_popup, text="Password:", bg="#e0f7fa").pack(pady=5)
-    password_entry = Entry(login_popup, show="*")
+    Label(login_popup, text="Password:", bg="#e0f7fa", font=("Arial", 12, "bold")).pack(pady=5)
+    password_entry = Entry(login_popup, show="*", font=("Arial", 12))
     password_entry.pack(pady=5)
     
     def check_credentials():
@@ -585,7 +645,7 @@ def login_window():
         else:
             messagebox.showerror("Error", "Invalid credentials")
     
-    login_button = Button(login_popup, text="Login", command=check_credentials, bg="#00796b", fg="white")
+    login_button = Button(login_popup, text="Login", command=check_credentials, bg="#00796b", fg="white", font=("Arial", 12, "bold"))
     login_button.pack(pady=10)
     
     login_popup.transient(root)
@@ -605,27 +665,27 @@ button_frame = Frame(root, bg="#e0f7fa")
 button_frame.pack(pady=10)
 
 # Create a button to add a new organization
-add_button = Button(button_frame, text="Add Organization", command=add_organization, bg="#00796b", fg="white")
+add_button = Button(button_frame, text="Add Organization", command=add_organization, bg="#00796b", fg="white", font=("Arial", 12, "bold"))
 add_button.grid(row=0, column=0, padx=10)
 
 # Create a button to add a new member
-add_member_button = Button(button_frame, text="Add Member", command=add_member, bg="#00796b", fg="white")
+add_member_button = Button(button_frame, text="Add Member", command=add_member, bg="#00796b", fg="white", font=("Arial", 12, "bold"))
 add_member_button.grid(row=0, column=1, padx=10)
 
 # Create a button to edit an organization
-edit_button = Button(button_frame, text="Edit Organization", command=edit_organization, bg="#00796b", fg="white", state=DISABLED)
+edit_button = Button(button_frame, text="Edit Organization", command=edit_organization, bg="#00796b", fg="white", font=("Arial", 12, "bold"), state=DISABLED)
 edit_button.grid(row=0, column=2, padx=10)
 
 # Create a button to delete an organization
-delete_button = Button(button_frame, text="Delete Organization", command=delete_organization, bg="#d32f2f", fg="white", state=DISABLED)
+delete_button = Button(button_frame, text="Delete Organization", command=delete_organization, bg="#d32f2f", fg="white", font=("Arial", 12, "bold"), state=DISABLED)
 delete_button.grid(row=0, column=3, padx=10)
 
 # Create a button to edit a member
-edit_member_button = Button(button_frame, text="Edit Member", command=edit_member, bg="#00796b", fg="white", state=DISABLED)
+edit_member_button = Button(button_frame, text="Edit Member", command=edit_member, bg="#00796b", fg="white", font=("Arial", 12, "bold"), state=DISABLED)
 edit_member_button.grid(row=0, column=4, padx=10)
 
 # Create a button to delete a member
-delete_member_button = Button(button_frame, text="Delete Member", command=delete_member, bg="#d32f2f", fg="white", state=DISABLED)
+delete_member_button = Button(button_frame, text="Delete Member", command=delete_member, bg="#d32f2f", fg="white", font=("Arial", 12, "bold"), state=DISABLED)
 delete_member_button.grid(row=0, column=5, padx=10)
 
 # Create a frame for the search box and the treeview
@@ -633,11 +693,11 @@ search_frame = Frame(root, bg="#e0f7fa")
 search_frame.pack(pady=10)
 
 # Add search box above the organization table
-search_label = Label(search_frame, text="Search Organization:", bg="#e0f7fa")
+search_label = Label(search_frame, text="Search Organization:", bg="#e0f7fa", font=("Arial", 12, "bold"))
 search_label.pack(side=LEFT, padx=10)
 
 search_var = StringVar()
-search_entry = Entry(search_frame, textvariable=search_var, width=50)
+search_entry = Entry(search_frame, textvariable=search_var, width=50, font=("Arial", 12))
 search_entry.pack(side=LEFT, padx=10)
 
 def on_search_var_changed(*args):
@@ -671,16 +731,16 @@ details_frame = Frame(main_frame, bg="#e0f7fa")
 details_frame.pack(side=LEFT, padx=20, fill=BOTH, expand=True)
 
 # Organization details
-org_name_label = Label(details_frame, text="", bg="#e0f7fa", font=("Arial", 14))
+org_name_label = Label(details_frame, text="", bg="#e0f7fa", font=("Arial", 14, "bold"))
 org_name_label.pack(pady=10)
 
-vision_label = Label(details_frame, text="", bg="#e0f7fa")
+vision_label = Label(details_frame, text="", bg="#e0f7fa", font=("Arial", 12))
 vision_label.pack(pady=5)
 
-mission_label = Label(details_frame, text="", bg="#e0f7fa")
+mission_label = Label(details_frame, text="", bg="#e0f7fa", font=("Arial", 12))
 mission_label.pack(pady=5)
 
-abbreviation_label = Label(details_frame, text="", bg="#e0f7fa")
+abbreviation_label = Label(details_frame, text="", bg="#e0f7fa", font=("Arial", 12))
 abbreviation_label.pack(pady=5)
 
 logo_label = Label(details_frame, bg="#e0f7fa")
