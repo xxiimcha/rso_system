@@ -7,12 +7,16 @@ from tkinter import ttk
 from tkinter import filedialog
 from PIL import Image, ImageTk
 
+# Default credentials
+DEFAULT_USERNAME = "admin"
+DEFAULT_PASSWORD = "1234"
+
 # Ensure the logos folder exists
 if not os.path.exists("logos"):
     os.makedirs("logos")
 
 # Function to connect to the MySQL database and fetch data
-def fetch_data():
+def fetch_data(search_query=""):
     try:
         conn = mysql.connector.connect(
             host='localhost',
@@ -21,14 +25,17 @@ def fetch_data():
             database='rso'
         )
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM organizations")
+        if search_query:
+            cursor.execute("SELECT org_id, org_name, org_logo, vision, mission, abbreviation FROM organizations WHERE org_name LIKE %s", (f"%{search_query}%",))
+        else:
+            cursor.execute("SELECT org_id, org_name, org_logo, vision, mission, abbreviation FROM organizations")
         rows = cursor.fetchall()
 
         for row in tree.get_children():
             tree.delete(row)
 
         for row in rows:
-            tree.insert("", "end", values=row)
+            tree.insert("", "end", values=row[:2])  # Only display ID and Name in the treeview
 
         cursor.close()
         conn.close()
@@ -56,6 +63,7 @@ def fetch_members(org_id):
 
         cursor.close()
         conn.close()
+        member_frame.pack(pady=10, fill=BOTH, expand=True)
     except mysql.connector.Error as err:
         messagebox.showerror("Error", f"Error fetching members: {err}")
 
@@ -65,9 +73,12 @@ def on_tree_select(event):
     if selected_item:
         org_id = tree.item(selected_item)["values"][0]
         fetch_members(org_id)
+        display_org_details(org_id)
         edit_button.config(state=NORMAL)
         delete_button.config(state=NORMAL)
     else:
+        clear_org_details()
+        member_frame.pack_forget()
         edit_button.config(state=DISABLED)
         delete_button.config(state=DISABLED)
 
@@ -80,6 +91,46 @@ def on_member_select(event):
     else:
         edit_member_button.config(state=DISABLED)
         delete_member_button.config(state=DISABLED)
+
+# Function to display organization details
+def display_org_details(org_id):
+    try:
+        conn = mysql.connector.connect(
+            host='localhost',
+            user='root',
+            password='',
+            database='rso'
+        )
+        cursor = conn.cursor()
+        cursor.execute("SELECT org_name, org_logo, vision, mission, abbreviation FROM organizations WHERE org_id = %s", (org_id,))
+        org_details = cursor.fetchone()
+
+        org_name_label.config(text=f"Name: {org_details[0]}")
+        vision_label.config(text=f"Vision: {org_details[2]}")
+        mission_label.config(text=f"Mission: {org_details[3]}")
+        abbreviation_label.config(text=f"Abbreviation: {org_details[4]}")
+
+        if org_details[1] and os.path.exists(org_details[1]):
+            image = Image.open(org_details[1])
+            image = image.resize((150, 150), Image.Resampling.LANCZOS)
+            img_preview = ImageTk.PhotoImage(image)
+            logo_label.config(image=img_preview)
+            logo_label.image = img_preview
+        else:
+            logo_label.config(image=None)
+
+        cursor.close()
+        conn.close()
+    except mysql.connector.Error as err:
+        messagebox.showerror("Error", f"Error fetching organization details: {err}")
+
+# Function to clear organization details display
+def clear_org_details():
+    org_name_label.config(text="")
+    vision_label.config(text="")
+    mission_label.config(text="")
+    abbreviation_label.config(text="")
+    logo_label.config(image=None)
 
 # Function to center the popup window
 def center_window(window, width=300, height=200):
@@ -106,6 +157,9 @@ def add_organization():
 
     def save_organization():
         org_name = org_name_entry.get()
+        vision = vision_entry.get()
+        mission = mission_entry.get()
+        abbreviation = abbreviation_entry.get()
         if org_name and img_path:
             try:
                 # Save the image to the logos folder
@@ -121,7 +175,8 @@ def add_organization():
                     database='rso'
                 )
                 cursor = conn.cursor()
-                cursor.execute("INSERT INTO organizations (org_name, org_logo) VALUES (%s, %s)", (org_name, img_save_path))
+                cursor.execute("INSERT INTO organizations (org_name, org_logo, vision, mission, abbreviation) VALUES (%s, %s, %s, %s, %s)", 
+                               (org_name, img_save_path, vision, mission, abbreviation))
                 conn.commit()
 
                 cursor.close()
@@ -141,19 +196,31 @@ def add_organization():
     popup.configure(bg="#e0f7fa")
     center_window(popup)
 
-    Label(popup, text="Organization Name:", bg="#e0f7fa").pack(pady=10)
+    Label(popup, text="Organization Name:", bg="#e0f7fa").pack(pady=5)
     org_name_entry = Entry(popup)
-    org_name_entry.pack(pady=10)
+    org_name_entry.pack(pady=5)
+
+    Label(popup, text="Vision:", bg="#e0f7fa").pack(pady=5)
+    vision_entry = Entry(popup)
+    vision_entry.pack(pady=5)
+
+    Label(popup, text="Mission:", bg="#e0f7fa").pack(pady=5)
+    mission_entry = Entry(popup)
+    mission_entry.pack(pady=5)
+
+    Label(popup, text="Abbreviation:", bg="#e0f7fa").pack(pady=5)
+    abbreviation_entry = Entry(popup)
+    abbreviation_entry.pack(pady=5)
 
     Label(popup, text="Organization Image:", bg="#e0f7fa").pack(pady=10)
     img_label = Label(popup)
     img_label.pack(pady=10)
 
     browse_button = Button(popup, text="Browse Image", command=browse_image, bg="#00796b", fg="white")
-    browse_button.pack(pady=10)
+    browse_button.pack(pady=5)
 
     save_button = Button(popup, text="Save", command=save_organization, bg="#00796b", fg="white")
-    save_button.pack(pady=10)
+    save_button.pack(pady=5)
 
 # Function to add a new member to the database
 def add_member():
@@ -253,6 +320,9 @@ def edit_organization():
 
     def update_organization():
         new_name = org_name_entry.get()
+        vision = vision_entry.get()
+        mission = mission_entry.get()
+        abbreviation = abbreviation_entry.get()
         if new_name:
             try:
                 # Save the image if a new one was selected
@@ -271,9 +341,11 @@ def edit_organization():
                 )
                 cursor = conn.cursor()
                 if img_save_path:
-                    cursor.execute("UPDATE organizations SET org_name = %s, org_logo = %s WHERE org_id = %s", (new_name, img_save_path, org_id))
+                    cursor.execute("UPDATE organizations SET org_name = %s, org_logo = %s, vision = %s, mission = %s, abbreviation = %s WHERE org_id = %s", 
+                                   (new_name, img_save_path, vision, mission, abbreviation, org_id))
                 else:
-                    cursor.execute("UPDATE organizations SET org_name = %s WHERE org_id = %s", (new_name, org_id))
+                    cursor.execute("UPDATE organizations SET org_name = %s, vision = %s, mission = %s, abbreviation = %s WHERE org_id = %s", 
+                                   (new_name, vision, mission, abbreviation, org_id))
                 conn.commit()
 
                 cursor.close()
@@ -290,12 +362,24 @@ def edit_organization():
     popup = Toplevel(root)
     popup.title("Edit Organization")
     popup.configure(bg="#e0f7fa")
-    center_window(popup, 400, 300)  # Adjusted size for the "Edit Organization" form
+    center_window(popup, 400, 400)  # Adjusted size for the "Edit Organization" form
 
     Label(popup, text="Organization Name:", bg="#e0f7fa").pack(pady=10)
     org_name_entry = Entry(popup)
     org_name_entry.insert(0, org_name)
     org_name_entry.pack(pady=10)
+
+    Label(popup, text="Vision:", bg="#e0f7fa").pack(pady=10)
+    vision_entry = Entry(popup)
+    vision_entry.pack(pady=10)
+
+    Label(popup, text="Mission:", bg="#e0f7fa").pack(pady=10)
+    mission_entry = Entry(popup)
+    mission_entry.pack(pady=10)
+
+    Label(popup, text="Abbreviation:", bg="#e0f7fa").pack(pady=10)
+    abbreviation_entry = Entry(popup)
+    abbreviation_entry.pack(pady=10)
 
     Label(popup, text="Organization Image:", bg="#e0f7fa").pack(pady=10)
     img_label = Label(popup)
@@ -309,16 +393,21 @@ def edit_organization():
         database='rso'
     )
     cursor = conn.cursor()
-    cursor.execute("SELECT org_logo FROM organizations WHERE org_id = %s", (org_id,))
-    org_logo = cursor.fetchone()[0]
+    cursor.execute("SELECT org_logo, vision, mission, abbreviation FROM organizations WHERE org_id = %s", (org_id,))
+    org_logo, vision, mission, abbreviation = cursor.fetchone()
     cursor.close()
     conn.close()
+
     if org_logo and os.path.exists(org_logo):
         image = Image.open(org_logo)
         image = image.resize((150, 150), Image.Resampling.LANCZOS)
         img_preview = ImageTk.PhotoImage(image)
         img_label.config(image=img_preview)
         img_label.image = img_preview
+
+    vision_entry.insert(0, vision)
+    mission_entry.insert(0, mission)
+    abbreviation_entry.insert(0, abbreviation)
 
     browse_button = Button(popup, text="Browse Image", command=browse_image, bg="#00796b", fg="white")
     browse_button.pack(pady=10)
@@ -399,13 +488,19 @@ def delete_organization():
                 database='rso'
             )
             cursor = conn.cursor()
+
+            # Delete members associated with the organization
+            cursor.execute("DELETE FROM members WHERE mem_org = %s", (org_id,))
+            conn.commit()
+
+            # Delete the organization
             cursor.execute("DELETE FROM organizations WHERE org_id = %s", (org_id,))
             conn.commit()
 
             cursor.close()
             conn.close()
 
-            messagebox.showinfo("Success", "Organization deleted successfully")
+            messagebox.showinfo("Success", "Organization and associated members deleted successfully")
             popup.destroy()
             fetch_data()  # Refresh the table with new data
         except mysql.connector.Error as err:
@@ -467,13 +562,43 @@ def delete_member():
     cancel_button = Button(popup, text="No", command=popup.destroy, bg="#00796b", fg="white")
     cancel_button.pack(pady=10)
 
+# Function to create the login window
+def login_window():
+    login_popup = Toplevel()
+    login_popup.title("Login")
+    login_popup.configure(bg="#e0f7fa")
+    center_window(login_popup, 300, 200)
+    
+    Label(login_popup, text="Username:", bg="#e0f7fa").pack(pady=5)
+    username_entry = Entry(login_popup)
+    username_entry.pack(pady=5)
+    
+    Label(login_popup, text="Password:", bg="#e0f7fa").pack(pady=5)
+    password_entry = Entry(login_popup, show="*")
+    password_entry.pack(pady=5)
+    
+    def check_credentials():
+        username = username_entry.get()
+        password = password_entry.get()
+        if username == DEFAULT_USERNAME and password == DEFAULT_PASSWORD:
+            login_popup.destroy()
+        else:
+            messagebox.showerror("Error", "Invalid credentials")
+    
+    login_button = Button(login_popup, text="Login", command=check_credentials, bg="#00796b", fg="white")
+    login_button.pack(pady=10)
+    
+    login_popup.transient(root)
+    login_popup.grab_set()
+    root.wait_window(login_popup)
+
 # Create the main window
 root = Tk()
 root.title("RSO Registration System")
 root.configure(bg="#e0f7fa")
 
 # Center the main window
-center_window(root, 1000, 600)
+center_window(root, 1200, 700)  # Increased window size to accommodate details
 
 # Create a frame for the buttons
 button_frame = Frame(root, bg="#e0f7fa")
@@ -503,6 +628,23 @@ edit_member_button.grid(row=0, column=4, padx=10)
 delete_member_button = Button(button_frame, text="Delete Member", command=delete_member, bg="#d32f2f", fg="white", state=DISABLED)
 delete_member_button.grid(row=0, column=5, padx=10)
 
+# Create a frame for the search box and the treeview
+search_frame = Frame(root, bg="#e0f7fa")
+search_frame.pack(pady=10)
+
+# Add search box above the organization table
+search_label = Label(search_frame, text="Search Organization:", bg="#e0f7fa")
+search_label.pack(side=LEFT, padx=10)
+
+search_var = StringVar()
+search_entry = Entry(search_frame, textvariable=search_var, width=50)
+search_entry.pack(side=LEFT, padx=10)
+
+def on_search_var_changed(*args):
+    fetch_data(search_var.get())
+
+search_var.trace("w", on_search_var_changed)
+
 # Create a frame for the treeview and the member treeview
 main_frame = Frame(root, bg="#e0f7fa")
 main_frame.pack(pady=10, fill=BOTH, expand=True)
@@ -524,9 +666,29 @@ tree_scroll.config(command=tree.yview)
 # Bind the treeview selection event
 tree.bind("<<TreeviewSelect>>", on_tree_select)
 
+# Create a frame to display organization details
+details_frame = Frame(main_frame, bg="#e0f7fa")
+details_frame.pack(side=LEFT, padx=20, fill=BOTH, expand=True)
+
+# Organization details
+org_name_label = Label(details_frame, text="", bg="#e0f7fa", font=("Arial", 14))
+org_name_label.pack(pady=10)
+
+vision_label = Label(details_frame, text="", bg="#e0f7fa")
+vision_label.pack(pady=5)
+
+mission_label = Label(details_frame, text="", bg="#e0f7fa")
+mission_label.pack(pady=5)
+
+abbreviation_label = Label(details_frame, text="", bg="#e0f7fa")
+abbreviation_label.pack(pady=5)
+
+logo_label = Label(details_frame, bg="#e0f7fa")
+logo_label.pack(pady=10)
+
 # Create a treeview to display the members
-member_frame = Frame(main_frame, bg="#e0f7fa")
-member_frame.pack(side=RIGHT, fill=BOTH, expand=True)
+member_frame = Frame(details_frame, bg="#e0f7fa")
+# Initially do not pack the member_frame
 member_scroll = Scrollbar(member_frame)
 member_scroll.pack(side=RIGHT, fill=Y)
 
@@ -542,6 +704,9 @@ member_scroll.config(command=member_tree.yview)
 
 # Bind the member treeview selection event
 member_tree.bind("<<TreeviewSelect>>", on_member_select)
+
+# Show the login window before displaying the main application
+login_window()
 
 # Fetch data when the UI is run
 fetch_data()
